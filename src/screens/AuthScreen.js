@@ -4,16 +4,18 @@ import {
   TouchableOpacity, ActivityIndicator,
   Alert, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { signIn, signUp } from '../services/supabase';
 import COLORS from '../theme/colors';
 
 export default function AuthScreen({ onAuth }) {
-  const [mode, setMode]         = useState('login');
-  const [name, setName]         = useState('');
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [mode, setMode]                 = useState('login');
+  const [name, setName]                 = useState('');
+  const [email, setEmail]               = useState('');
+  const [password, setPassword]         = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading]           = useState(false);
 
   const handle = async () => {
     if (!email.trim() || !password.trim()) {
@@ -108,14 +110,28 @@ export default function AuthScreen({ onAuth }) {
           />
 
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Min 6 characters"
-            placeholderTextColor={COLORS.textSecondary}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          <View style={styles.passwordWrapper}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Min 6 characters"
+              placeholderTextColor={COLORS.textSecondary}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity
+              style={styles.eyeButton}
+              onPress={() => setShowPassword(prev => !prev)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off' : 'eye'}
+                size={20}
+                color={COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity style={styles.btn} onPress={handle} disabled={loading}>
             {loading
@@ -136,22 +152,25 @@ export default function AuthScreen({ onAuth }) {
 }
 
 const styles = StyleSheet.create({
-  container:     { flex: 1, backgroundColor: COLORS.background },
-  inner:         { flexGrow: 1, padding: 24, justifyContent: 'center' },
-  logoArea:      { alignItems: 'center', marginBottom: 40 },
-  logoCircle:    { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  logoEmoji:     { fontSize: 40 },
-  appName:       { fontSize: 32, fontWeight: '800', color: COLORS.text },
-  tagline:       { fontSize: 15, color: COLORS.textSecondary, marginTop: 4 },
-  tabRow:        { flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: 12, padding: 4, marginBottom: 24 },
-  tab:           { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
-  tabActive:     { backgroundColor: COLORS.primary },
-  tabText:       { fontSize: 15, color: COLORS.textSecondary, fontWeight: '500' },
-  tabTextActive: { color: '#fff', fontWeight: '700' },
-  form:          { gap: 4 },
-  label:         { fontSize: 13, color: COLORS.textSecondary, marginBottom: 6, marginTop: 12 },
-  input:         { backgroundColor: COLORS.card, borderRadius: 12, padding: 14, fontSize: 15, color: COLORS.text, borderWidth: 0.5, borderColor: COLORS.border || '#eee' },
-  btn:           { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
-  btnText:       { color: '#fff', fontWeight: '700', fontSize: 16 },
-  switchText:    { textAlign: 'center', color: COLORS.primary, fontSize: 14, marginTop: 16 },
+  container:        { flex: 1, backgroundColor: COLORS.background },
+  inner:            { flexGrow: 1, padding: 24, justifyContent: 'center' },
+  logoArea:         { alignItems: 'center', marginBottom: 40 },
+  logoCircle:       { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  logoEmoji:        { fontSize: 40 },
+  appName:          { fontSize: 32, fontWeight: '800', color: COLORS.text },
+  tagline:          { fontSize: 15, color: COLORS.textSecondary, marginTop: 4 },
+  tabRow:           { flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: 12, padding: 4, marginBottom: 24 },
+  tab:              { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+  tabActive:        { backgroundColor: COLORS.primary },
+  tabText:          { fontSize: 15, color: COLORS.textSecondary, fontWeight: '500' },
+  tabTextActive:    { color: '#fff', fontWeight: '700' },
+  form:             { gap: 4 },
+  label:            { fontSize: 13, color: COLORS.textSecondary, marginBottom: 6, marginTop: 12 },
+  input:            { backgroundColor: COLORS.card, borderRadius: 12, padding: 14, fontSize: 15, color: COLORS.text, borderWidth: 0.5, borderColor: COLORS.border || '#eee' },
+  passwordWrapper:  { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 0.5, borderColor: COLORS.border || '#eee' },
+  passwordInput:    { flex: 1, padding: 14, fontSize: 15, color: COLORS.text },
+  eyeButton:        { paddingHorizontal: 14, paddingVertical: 14 },
+  btn:              { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
+  btnText:          { color: '#fff', fontWeight: '700', fontSize: 16 },
+  switchText:       { textAlign: 'center', color: COLORS.primary, fontSize: 14, marginTop: 16 },
 });

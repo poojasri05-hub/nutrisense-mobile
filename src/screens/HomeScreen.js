@@ -26,9 +26,7 @@ export default function HomeScreen({ route, navigation }) {
   const [tip] = useState(TIPS[Math.floor(Math.random() * TIPS.length)]);
 
   useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [])
+    useCallback(() => { loadData(); }, [])
   );
 
   const loadData = async () => {
@@ -46,6 +44,7 @@ export default function HomeScreen({ route, navigation }) {
 
       // Load today's stats from local storage
       const saved = await AsyncStorage.getItem('scan_history');
+
       if (saved) {
         const history = JSON.parse(saved);
         const today = new Date().toDateString();
@@ -60,6 +59,10 @@ export default function HomeScreen({ route, navigation }) {
           scans:    todayItems.length,
         });
         setRecentScans(history.slice(0, 3));
+      } else {
+        // History was cleared — reset everything so stale data doesn't linger
+        setTodayStats({ calories: 0, protein: 0, carbs: 0, fat: 0, scans: 0 });
+        setRecentScans([]);
       }
     } catch (e) {
       console.error('HomeScreen loadData error:', e);
@@ -154,9 +157,9 @@ export default function HomeScreen({ route, navigation }) {
       <Text style={styles.sectionTitle}>Quick Actions</Text>
       <View style={styles.quickActions}>
         {[
-          { icon: '🔍', label: 'Scan Food',    screen: 'Scan',    color: '#E8F5E9' },
-          { icon: '🤖', label: 'Ask AI',       screen: 'Chat',    color: '#E3F2FD' },
-          { icon: '📊', label: 'My History',   screen: 'History', color: '#FFF3E0' },
+          { icon: '🔍', label: 'Scan Food',    screen: 'Scan',        color: '#E8F5E9' },
+          { icon: '🤖', label: 'Ask AI',       screen: 'Chat',        color: '#E3F2FD' },
+          { icon: '📊', label: 'My History',   screen: 'History',     color: '#FFF3E0' },
           { icon: '🗺️', label: 'Restaurants',  screen: 'Restaurants', color: '#FCE4EC' },
         ].map(action => (
           <TouchableOpacity

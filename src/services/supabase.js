@@ -1,21 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SUPABASE_URL      = 'https://sdsvsgtphxasqvlqhqaz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkc3ZzZ3RwaHhhc3F2bHFocWF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNzIzNzksImV4cCI6MjA5Nzk0ODM3OX0.vIPj_aCErkq3EWVmVst4cpgPLLdPlSOGbRWujKNeWwI';
 
-// Secure storage adapter for Supabase auth tokens
-const ExpoSecureStoreAdapter = {
-  getItem:    (key) => SecureStore.getItemAsync(key),
-  setItem:    (key, value) => SecureStore.setItemAsync(key, value),
-  removeItem: (key) => SecureStore.deleteItemAsync(key),
-};
-
+// AsyncStorage adapter — replaces expo-secure-store which has a 2048-byte
+// per-key size limit on Android. Supabase session tokens routinely exceed
+// this, causing setItemAsync to silently fail and the session to never persist.
+// AsyncStorage has no such limit and is the storage Supabase officially
+// recommends for React Native.
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    storage:          ExpoSecureStoreAdapter,
-    autoRefreshToken: true,
-    persistSession:   true,
+    storage:            AsyncStorage,
+    autoRefreshToken:   true,
+    persistSession:     true,
     detectSessionInUrl: false,
   },
 });
@@ -81,13 +79,13 @@ export async function saveToCloud(userId, foodName, nutrition) {
   const { data, error } = await supabase
     .from('scan_history')
     .insert({
-      user_id:    userId,
-      food_name:  foodName,
-      calories:   nutrition.calories,
-      protein:    nutrition.protein,
-      carbs:      nutrition.carbs,
-      fat:        nutrition.fat,
-      fiber:      nutrition.fiber,
+      user_id:   userId,
+      food_name: foodName,
+      calories:  nutrition.calories,
+      protein:   nutrition.protein,
+      carbs:     nutrition.carbs,
+      fat:       nutrition.fat,
+      fiber:     nutrition.fiber,
     });
   if (error) throw error;
   return data;

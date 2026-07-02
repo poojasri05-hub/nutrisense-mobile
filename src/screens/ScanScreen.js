@@ -9,6 +9,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { recognizeFoodFromImage } from '../services/nutritionApi';
 import { searchNutrition, saveScan } from '../services/api';
 import { sendMealLoggedNotification } from '../services/notifications';
+import { checkFoodAgainstDiet } from '../services/dietMonitor'; // ← NEW
+import { supabase } from '../services/supabase';               // ← NEW
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import COLORS from '../theme/colors';
 
@@ -18,8 +20,25 @@ export default function ScanScreen({ route }) {
   const [loading, setLoading]   = useState(false);
   const [result, setResult]     = useState(null);
   const [image, setImage]       = useState(null);
+  const [dietWarning, setDietWarning] = useState(null); // ← NEW
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef(null);
+
+  // ── NEW: fetch user's diet type from profile ─────────────────────────────
+  const getUserDietType = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return 'balanced';
+      const { data } = await supabase
+        .from('profiles')
+        .select('diet_type')
+        .eq('id', session.user.id)
+        .single();
+      return data?.diet_type || 'balanced';
+    } catch (e) {
+      return 'balanced';
+    }
+  };
 
   const saveToLocalHistory = async (foodName, nutrition) => {
     try {
@@ -35,6 +54,17 @@ export default function ScanScreen({ route }) {
     } catch (e) {}
   };
 
+  // ── NEW: run diet check after every scan ─────────────────────────────────
+  const runDietCheck = async (foodName, nutrition) => {
+    const dietType = await getUserDietType();
+    if (dietType && dietType !== 'balanced') {
+      const warning = checkFoodAgainstDiet(foodName, nutrition, dietType);
+      setDietWarning(warning);
+    } else {
+      setDietWarning(null);
+    }
+  };
+
   const analyzeText = async () => {
     if (!foodName.trim()) return Alert.alert('Enter a food name');
     setLoading(true);
@@ -43,6 +73,7 @@ export default function ScanScreen({ route }) {
       await saveToLocalHistory(foodName.trim(), nutrition);
       await saveScan({ food_name: foodName.trim(), ...nutrition });
       await sendMealLoggedNotification(foodName.trim(), nutrition.calories);
+      await runDietCheck(foodName.trim(), nutrition); // ← NEW
       setResult({ foodName: foodName.trim(), image: null, ...nutrition });
       setMode('result');
     } catch (e) {
@@ -88,6 +119,7 @@ export default function ScanScreen({ route }) {
       await saveToLocalHistory(topFood, nutrition);
       await saveScan({ food_name: topFood, ...nutrition });
       await sendMealLoggedNotification(topFood, nutrition.calories);
+      await runDietCheck(topFood, nutrition); // ← NEW
       setResult({
         foodName:     topFood,
         confidence:   foods[0].confidence,
@@ -137,6 +169,24 @@ export default function ScanScreen({ route }) {
             </View>
           )}
         </View>
+
+        {/* ── NEW: Diet Warning Banner ───────────────────────────────── */}
+        {dietWarning && (
+          <View style={[
+            styles.dietBanner,
+            dietWarning.level === 'error'   && styles.dietBannerError,
+            dietWarning.level === 'warning' && styles.dietBannerWarning,
+            dietWarning.level === 'success' && styles.dietBannerSuccess,
+          ]}>
+            <Text style={styles.dietBannerTitle}>{dietWarning.title}</Text>
+            <Text style={styles.dietBannerMsg}>{dietWarning.message}</Text>
+            {dietWarning.tip && (
+              <Text style={styles.dietBannerTip}>💡 {dietWarning.tip}</Text>
+            )}
+          </View>
+        )}
+        {/* ─────────────────────────────────────────────────────────── */}
+
         <Text style={styles.perServing}>per 100g serving</Text>
         <View style={styles.macroGrid}>
           {[
@@ -163,6 +213,7 @@ export default function ScanScreen({ route }) {
                 onPress={async () => {
                   setLoading(true);
                   const n = await searchNutrition(alt.name);
+                  await runDietCheck(alt.name, n); // ← NEW
                   setResult({ ...result, foodName: alt.name, ...n });
                   setLoading(false);
                 }}
@@ -175,7 +226,11 @@ export default function ScanScreen({ route }) {
         )}
         <TouchableOpacity
           style={styles.btn}
-          onPress={() => { setResult(null); setImage(null); setFoodName(''); setMode('home'); }}
+          onPress={() => {
+            setResult(null); setImage(null);
+            setFoodName(''); setDietWarning(null); // ← NEW: reset warning
+            setMode('home');
+          }}
         >
           <Text style={styles.btnText}>Scan Another</Text>
         </TouchableOpacity>
@@ -285,50 +340,59 @@ export default function ScanScreen({ route }) {
 }
 
 const styles = StyleSheet.create({
-  container:       { flex: 1, backgroundColor: COLORS.background },
-  center:          { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: COLORS.background },
-  resultContainer: { padding: 24, backgroundColor: COLORS.background },
-  title:           { fontSize: 26, fontWeight: '800', color: COLORS.text, marginBottom: 8 },
-  subtitle:        { fontSize: 15, color: COLORS.textSecondary, textAlign: 'center', marginBottom: 32 },
-  loadingText:     { fontSize: 18, fontWeight: '600', color: COLORS.text, marginTop: 16 },
-  loadingSubText:  { fontSize: 14, color: COLORS.textSecondary, marginTop: 8 },
-  permText:        { fontSize: 16, color: COLORS.text, marginBottom: 20, textAlign: 'center' },
-  modeCard:        { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: 16, padding: 16, marginBottom: 12, width: '100%', borderWidth: 0.5, borderColor: COLORS.border },
-  modeIcon:        { fontSize: 32, marginRight: 14 },
-  modeInfo:        { flex: 1 },
-  modeTitle:       { fontSize: 16, fontWeight: '700', color: COLORS.text },
-  modeSub:         { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
-  modeArrow:       { fontSize: 18, color: COLORS.textSecondary },
-  camera:          { flex: 1 },
-  cameraOverlay:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
-  scanFrame:       { width: 250, height: 250, borderRadius: 20, borderWidth: 2, borderColor: COLORS.primary, backgroundColor: 'transparent' },
-  scanHint:        { color: '#fff', fontSize: 14, marginTop: 16, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-  cameraControls:  { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingBottom: 40, paddingHorizontal: 32 },
-  cancelBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
-  cancelText:      { color: '#fff', fontSize: 18, fontWeight: '700' },
-  captureBtn:      { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#fff' },
-  captureBtnInner: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff' },
-  galleryBtn:      { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
-  galleryText:     { fontSize: 22 },
-  foodImage:       { width: '100%', height: 200, borderRadius: 16, marginBottom: 16 },
-  resultHeader:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  foodName:        { fontSize: 26, fontWeight: '800', color: COLORS.text, textTransform: 'capitalize', flex: 1 },
-  confidenceBadge: { backgroundColor: COLORS.primary + '20', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  confidenceText:  { fontSize: 12, color: COLORS.primary, fontWeight: '600' },
-  perServing:      { fontSize: 13, color: COLORS.textSecondary, marginBottom: 20 },
-  macroGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
-  macroCard:       { flex: 1, minWidth: '44%', backgroundColor: COLORS.card, borderRadius: 14, padding: 16, borderTopWidth: 3, alignItems: 'center' },
-  macroValue:      { fontSize: 28, fontWeight: '700', color: COLORS.text },
-  macroUnit:       { fontSize: 12, color: COLORS.textSecondary },
-  macroLabel:      { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
-  altCard:         { backgroundColor: COLORS.card, borderRadius: 14, padding: 16, marginBottom: 20 },
-  altTitle:        { fontSize: 13, color: COLORS.textSecondary, marginBottom: 10 },
-  altRow:          { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: COLORS.border },
-  altName:         { fontSize: 15, color: COLORS.text },
-  altConfidence:   { fontSize: 13, color: COLORS.primary, fontWeight: '600' },
-  btn:             { backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, width: '100%', alignItems: 'center', marginBottom: 12 },
-  btnText:         { color: '#fff', fontWeight: '700', fontSize: 16 },
-  backBtn:         { marginTop: 8 },
-  backText:        { color: COLORS.textSecondary, fontSize: 15 },
-  input:           { width: '100%', borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 14, padding: 14, fontSize: 16, color: COLORS.text, marginBottom: 16, backgroundColor: COLORS.card },
+  container:        { flex: 1, backgroundColor: COLORS.background },
+  center:           { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: COLORS.background },
+  resultContainer:  { padding: 24, backgroundColor: COLORS.background },
+  title:            { fontSize: 26, fontWeight: '800', color: COLORS.text, marginBottom: 8 },
+  subtitle:         { fontSize: 15, color: COLORS.textSecondary, textAlign: 'center', marginBottom: 32 },
+  loadingText:      { fontSize: 18, fontWeight: '600', color: COLORS.text, marginTop: 16 },
+  loadingSubText:   { fontSize: 14, color: COLORS.textSecondary, marginTop: 8 },
+  permText:         { fontSize: 16, color: COLORS.text, marginBottom: 20, textAlign: 'center' },
+  modeCard:         { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: 16, padding: 16, marginBottom: 12, width: '100%', borderWidth: 0.5, borderColor: COLORS.border },
+  modeIcon:         { fontSize: 32, marginRight: 14 },
+  modeInfo:         { flex: 1 },
+  modeTitle:        { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  modeSub:          { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
+  modeArrow:        { fontSize: 18, color: COLORS.textSecondary },
+  camera:           { flex: 1 },
+  cameraOverlay:    { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
+  scanFrame:        { width: 250, height: 250, borderRadius: 20, borderWidth: 2, borderColor: COLORS.primary, backgroundColor: 'transparent' },
+  scanHint:         { color: '#fff', fontSize: 14, marginTop: 16, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  cameraControls:   { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingBottom: 40, paddingHorizontal: 32 },
+  cancelBtn:        { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+  cancelText:       { color: '#fff', fontSize: 18, fontWeight: '700' },
+  captureBtn:       { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#fff' },
+  captureBtnInner:  { width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff' },
+  galleryBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+  galleryText:      { fontSize: 22 },
+  foodImage:        { width: '100%', height: 200, borderRadius: 16, marginBottom: 16 },
+  resultHeader:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  foodName:         { fontSize: 26, fontWeight: '800', color: COLORS.text, textTransform: 'capitalize', flex: 1 },
+  confidenceBadge:  { backgroundColor: COLORS.primary + '20', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  confidenceText:   { fontSize: 12, color: COLORS.primary, fontWeight: '600' },
+  perServing:       { fontSize: 13, color: COLORS.textSecondary, marginBottom: 20 },
+  macroGrid:        { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
+  macroCard:        { flex: 1, minWidth: '44%', backgroundColor: COLORS.card, borderRadius: 14, padding: 16, borderTopWidth: 3, alignItems: 'center' },
+  macroValue:       { fontSize: 28, fontWeight: '700', color: COLORS.text },
+  macroUnit:        { fontSize: 12, color: COLORS.textSecondary },
+  macroLabel:       { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
+  altCard:          { backgroundColor: COLORS.card, borderRadius: 14, padding: 16, marginBottom: 20 },
+  altTitle:         { fontSize: 13, color: COLORS.textSecondary, marginBottom: 10 },
+  altRow:           { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: COLORS.border },
+  altName:          { fontSize: 15, color: COLORS.text },
+  altConfidence:    { fontSize: 13, color: COLORS.primary, fontWeight: '600' },
+  btn:              { backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, width: '100%', alignItems: 'center', marginBottom: 12 },
+  btnText:          { color: '#fff', fontWeight: '700', fontSize: 16 },
+  backBtn:          { marginTop: 8 },
+  backText:         { color: COLORS.textSecondary, fontSize: 15 },
+  input:            { width: '100%', borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 14, padding: 14, fontSize: 16, color: COLORS.text, marginBottom: 16, backgroundColor: COLORS.card },
+
+  // ── NEW: Diet banner styles ──────────────────────────────────────────────
+  dietBanner:        { borderRadius: 14, padding: 14, marginBottom: 16, borderLeftWidth: 4 },
+  dietBannerError:   { backgroundColor: '#FF6B6B20', borderLeftColor: '#FF6B6B' },
+  dietBannerWarning: { backgroundColor: '#FFE66D20', borderLeftColor: '#FFE66D' },
+  dietBannerSuccess: { backgroundColor: '#4CAF5020', borderLeftColor: '#4CAF50' },
+  dietBannerTitle:   { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
+  dietBannerMsg:     { fontSize: 13, color: COLORS.text, lineHeight: 20 },
+  dietBannerTip:     { fontSize: 12, color: COLORS.textSecondary, marginTop: 8, fontStyle: 'italic' },
 });
